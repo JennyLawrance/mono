@@ -416,6 +416,23 @@ namespace System.Web
 			}
 		}
 
+                public bool Chunked{
+                        get {
+                               if (worker_request == null)
+                                      return false;
+
+                               string teHeader = worker_request.GetKnownRequestHeader (HttpWorkerRequest.HeaderTransferEncoding);
+
+                               if (teHeader != null) {
+                                      if (String.Equals(teHeader, "chunked", StringComparison.OrdinalIgnoreCase)) {
+                                            return true;
+                                      }   
+                               }
+
+                               return false;
+                       }
+                }
+
 		public string ContentType {
 			get {
 				if (content_type == null){
@@ -1025,13 +1042,17 @@ namespace System.Web
 			// our stream position
 			long position;
 
+                        // Is request entity chunked encoded
+                        bool isChunked;
 			//
 			// @request: the containing request that created us, used to find out content length
 			public BufferlessInputStream (HttpRequest request)
 			{
 				this.request = request;
 				content_length = request.ContentLength;
+                                this.isChunked = request.Chunked;
 			}
+
 
 			public override bool CanRead {
 				get { return true; }
@@ -1109,7 +1130,7 @@ namespace System.Web
 				}
 
 				// serve bytes from worker request if available
-				if (position < content_length) {
+				if (position < content_length || this.isChunked) {
 					long bytes_left = content_length-position;
 					int n = count;
 
@@ -1117,6 +1138,11 @@ namespace System.Web
 						n = (int) bytes_left;
 
 					int bytes_read = request.worker_request.ReadEntityBody (buffer, offset, n);
+                                        if (bytes_read == 0) {
+                                                // we are done reading the data.
+                                                content_length = (int)position;
+                                        }
+         
 					position += bytes_read;
 					return bytes_read;
 				}
